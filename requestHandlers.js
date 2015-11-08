@@ -27,7 +27,7 @@ function sync_data(response,request) {
 		console.log("Request handler 'sync_data' was called.");
 		var body = '';
 		request.on('data', function (data) {
-			body += data;
+			body += data;	
 			// Too much POST data, kill the connection!
 			if (body.length > 1e6){request.connection.destroy();}
 		});
@@ -37,15 +37,19 @@ function sync_data(response,request) {
 		request.on('end', function () {
 			// decrypting the message received	
 
-			//body = security.decipher(body);
+			body = security.decipher(body);
 			// parsing the decrypted message
 			var received = JSON.parse(body);
-			console.log(received);
+			
 			// add time stamp when server received the data
 			for ( var i = 0; i< received.length;i++) {
-				console.log("hello world");
-				 received[i].server_synctime = new Date().toISOString()
+				 date = new Date();
+				 offset = date.getTimezoneOffset() * 60000;
+				 date = new Date(date.valueOf() - offset);
+				 received[i].server_synctime = date.toISOString();
+				 received[i].ip = request.connection.remoteAddress;
 			}
+			console.log(received);
 			var coll = "logs";
 			var getlogs = db1.collection(coll);
 			
@@ -55,8 +59,8 @@ function sync_data(response,request) {
 					console.log(err);
 				}
 				else{
-					console.log("successfully synced data " + received.number); 
-					response.write("successfully synced data " + received.number);
+					console.log("successfully synced data " + request.connection.remoteAddress); 
+					response.write("successfully synced data " + request.connection.remoteAddress);
 					response.end();	
 				}
 			});
@@ -152,7 +156,7 @@ db.schedule_collection.find({
 
 //below are only testing puropes
 
-//curl -X POST -d '[{ "IMEI" : "i" : 286796585, "txcell" : 0, "rxcell" : 0, "date" : "2015T18+05:30" }]' http://localhost:8888/sync_data
+//curl -X POST -d '[{ "IMEI" : 286796585, "txcell" : 0, "rxcell" : 0, "date" : "2015T18+05:30" }]' http://localhost:8888/sync_data
 
 //below are obsolete
 //test the functionality by
