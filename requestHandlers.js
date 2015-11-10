@@ -20,7 +20,130 @@ getlogs.ensureIndex([{"IMEI" : 1 }, {unique : true}], function(err,docs){
 
 });
 
+function sync_data(response,request){
+	if (request.method == 'POST') {
 
+		console.log("Request handler 'sync_data' was called.");
+		var body = '';
+		request.on('data', function (data) {
+			body += data;	
+			// Too much POST data, kill the connection!
+			if (body.length > 1e6){request.connection.destroy();}
+		});
+		// once receiving message is finished 
+		request.on('end', function () {
+		
+			// decrypting the message received	
+			body = security.decipher(body);
+			// parsing the decrypted message
+			var received = JSON.parse(body);
+			
+			//specifying collection for querying
+			var coll = "logs";
+			var getlogs = db1.collection(coll);
+			
+			
+			getlogs.find({"IMEI" : received.IMEI},function(err,docs){
+				if(err){
+					console.log(err);
+				}
+				else{
+					if(docs.length == 0){
+						// if length of docs is 0 it means user is new
+						// add the document as it is by changing the date to Dateobject and add server time
+						
+						for ( var i = 0; i< received.data.length;i++) {
+							 serverDate = new Date();
+							 //offset = date.getTimezoneOffset() * 60000;
+							 //date = new Date(date.valueOf() - offset);
+							 received.data[i].date = new Date(received[i].date);
+							 received.data[i].server_synctime = serverDate;
+							 //received[i].server_synctime = date.toISOString();
+							 received.data[i].ip = request.connection.remoteAddress;
+						}
+						
+						getlogs.insert(received,function(err,doc){
+							if(err){
+								console.log(err);
+								response.write(0);
+								response.end();
+							}
+							else{
+								
+								if(doc.data.length != 0 ){
+									//increment the id to current length of the document
+									getlogs.update({"IMEI": received.IMEI },{ $inc: { id : doc.data.length } },function(err,updatedoc){
+										if(err){
+												console.log(err);
+											}
+										else{
+												response.write(updatedoc.id); //send current count
+												console.log("successfully synced data " + request.connection.remoteAddress);
+												response.end();   // close connection
+												
+											}										
+									}); // end update 
+								}   //end if 
+							  }	 //end else
+						}); // end insert query
+					}// end if condition
+					else{
+						// get current id 
+						getlogs.aggregrate([{$match : {"IMEI" : received.IMEI}},{$project : { "_id":0, "id" : 1 } }],function(err,docid){
+							if(err){
+								console.log(err);
+							}
+							else{
+								//compare database id with received id
+								// if received_id < current_id means response message to client is lost and it is not updated in their client
+								if(received.id < docid.id){
+									response.write(docid.id);
+									response.end();
+								}
+								else if (received.id == docid.id){
+									//both are in synchronize and need to update database
+									getlogs.update({"IMEI" : received.IMEI},{$push : { data:{$each: received.data }}},function(err){
+										if(err){
+											console.log(err);
+											response.write(received.id);
+											response.end();
+										}
+										else{
+											getlogs.update({"IMEI": "received.IMEI" },{ $inc: { id: received.data.length} },function(err,docs){
+											if(err){
+													console.log(err);
+													//response.write(received.id);
+													//response.end();
+												}
+											else{
+													console.log("successfully synced data " + request.connection.remoteAddress);
+													response.write(docs.id); //send current count
+													response.end();   // close connection
+													
+												}
+											
+											}); //end update
+										}
+									});
+									
+								}
+							}
+						});
+						
+					}
+				} //end first else
+				
+			}); // end getlogs find
+		}); //end request on
+
+	} //end if
+} //end sync data
+
+
+
+
+
+/*
 function sync_data(response,request) {
 	if (request.method == 'POST') {
 
@@ -43,10 +166,12 @@ function sync_data(response,request) {
 			
 			// add time stamp when server received the data
 			for ( var i = 0; i< received.length;i++) {
-				 date = new Date();
-				 offset = date.getTimezoneOffset() * 60000;
-				 date = new Date(date.valueOf() - offset);
-				 received[i].server_synctime = date.toISOString();
+				 serverDate = new Date();
+				 //offset = date.getTimezoneOffset() * 60000;
+				 //date = new Date(date.valueOf() - offset);
+				 received[i].date = new Date(received[i].date);
+				 received[i].server_synctime = serverDate;
+				 //received[i].server_synctime = date.toISOString();
 				 received[i].ip = request.connection.remoteAddress;
 			}
 			console.log(received);
@@ -59,27 +184,39 @@ function sync_data(response,request) {
 					console.log(err);
 				}
 				else{
+					
 					console.log("successfully synced data " + request.connection.remoteAddress); 
-					response.write("successfully synced data " + request.connection.remoteAddress);
+					response.write("success");
+					//console.log(response);
 					response.end();	
 				}
 			});
+*/
+			
 
-
-
-			/*getlogs.update({"number" : received.number},{$push : { data:{$each: received.data }}},function(err,status){
+			/*getlogs.update({"IMEI" : received.IMEI},{$push : { data:{$each: received.data }}},function(err,status){
 				if(err){
 					console.log(err);								
 				}
 				else{
+					getlogs.update({"IMEI": "received.IMEI" },{ $inc: { count: difference} },function(err,docs){
+					if(err){
+							console.log(err);
+						}
+					else{
+							response.write(); //send current count
+							response.end();   // close connection
+							
+						}
+					
+					})
+				
 					console.log("successfully synced data " + received.number); 
 					response.write("successfully synced data " + received.number);
 					response.end();	
 				}
 			});*/
-		});
-	}
-}
+	
 
 
 
@@ -156,7 +293,7 @@ db.schedule_collection.find({
 
 //below are only testing puropes
 
-//curl -X POST -d '[{ "IMEI" : 286796585, "txcell" : 0, "rxcell" : 0, "date" : "2015T18+05:30" }]' http://localhost:8888/sync_data
+//curl -X POST -d '[{"IMEI": '355463061449170',"txwifi": 4540,"rxwifi": 780,"txcell": 0,"rxcell": 0,"date": "2015-08-26T20:28:60.000+0530","ip": "192.168.43.110" }]' http://localhost:8888/sync_data
 
 //below are obsolete
 //test the functionality by
