@@ -51,12 +51,16 @@ function sync_data(response,request){
 					if(docs.length == 0){
 						// if length of docs is 0 it means user is new
 						// add the document as it is by changing the date to Dateobject and add server time
+						console.log("hello 1");
 						
 						for ( var i = 0; i< received.data.length;i++) {
 							 serverDate = new Date();
 							 //offset = date.getTimezoneOffset() * 60000;
 							 //date = new Date(date.valueOf() - offset);
-							 received.data[i].date = new Date(received[i].date);
+							 console.log(received.data[i].date);
+							 received.data[i].date = new Date(received.data[i].date);
+							 console.log(received.data[i].date);
+							 console.log(received.data[i].date.toISOString());
 							 received.data[i].server_synctime = serverDate;
 							 //received[i].server_synctime = date.toISOString();
 							 received.data[i].ip = request.connection.remoteAddress;
@@ -72,12 +76,17 @@ function sync_data(response,request){
 								
 								if(doc.data.length != 0 ){
 									//increment the id to current length of the document
-									getlogs.update({"IMEI": received.IMEI },{ $inc: { id : doc.data.length } },function(err,updatedoc){
+									getlogs.update({"IMEI": received.IMEI },{ $inc: { id : doc.data.length-1 } },function(err){
 										if(err){
 												console.log(err);
 											}
 										else{
-												response.write(updatedoc.id); //send current count
+												console.log("hello2");
+												var temp = received.id+doc.data.length-1;
+												temp+= '';
+												console.log("sending current database id");
+												console.log(temp);
+												response.write(temp); //send current count
 												console.log("successfully synced data " + request.connection.remoteAddress);
 												response.end();   // close connection
 												
@@ -89,35 +98,59 @@ function sync_data(response,request){
 					}// end if condition
 					else{
 						// get current id 
-						getlogs.aggregrate([{$match : {"IMEI" : received.IMEI}},{$project : { "_id":0, "id" : 1 } }],function(err,docid){
+						console.log("in else");
+						getlogs.aggregate([{$match : {"IMEI" : received.IMEI}},{$project : { "_id":0, "id" : 1 } }],function(err,docid){
 							if(err){
 								console.log(err);
 							}
 							else{
 								//compare database id with received id
 								// if received_id < current_id means response message to client is lost and it is not updated in their client
-								if(received.id < docid.id){
-									response.write(docid.id);
+									if(received.id < docid[0].id){
+									var temp = docid[0].id;
+									temp+= '';
+									console.log("need to update client database");
+									console.log(temp);
+									response.write(temp);
 									response.end();
 								}
-								else if (received.id == docid.id){
+								else if (received.id-1 == docid[0].id){
+									for ( var i = 0; i< received.data.length;i++) {
+										 serverDate = new Date();
+										 //offset = date.getTimezoneOffset() * 60000;
+										 //date = new Date(date.valueOf() - offset);
+										 received.data[i].date = new Date(received.data[i].date);
+										 received.data[i].server_synctime = serverDate;
+										 //received[i].server_synctime = date.toISOString();
+										 received.data[i].ip = request.connection.remoteAddress;
+									}
 									//both are in synchronize and need to update database
 									getlogs.update({"IMEI" : received.IMEI},{$push : { data:{$each: received.data }}},function(err){
 										if(err){
 											console.log(err);
-											response.write(received.id);
+											console.log("error in writing to database");
+											var temp = docid[0].id;
+											temp+= '';
+											response.write(temp);
 											response.end();
 										}
 										else{
-											getlogs.update({"IMEI": "received.IMEI" },{ $inc: { id: received.data.length} },function(err,docs){
+											getlogs.update({"IMEI": received.IMEI },{ $inc: { id: received.data.length} },function(err,docs){
 											if(err){
 													console.log(err);
-													//response.write(received.id);
+													//response.write(docid[0].id);
 													//response.end();
 												}
 											else{
+													console.log("hello3");
+													console.log("current database id")
+													console.log(docid[0].id + received.data.length);
 													console.log("successfully synced data " + request.connection.remoteAddress);
-													response.write(docs.id); //send current count
+													var temp = docid[0].id + received.data.length;
+													temp+= '';
+													console.log("sending current database id");
+													console.log(temp);
+													response.write(temp); //send current count
 													response.end();   // close connection
 													
 												}
