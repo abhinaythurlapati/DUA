@@ -10,4 +10,3 @@ exports.decipher = function(body){
 	body = decipher.update(body,'hex','utf8') + decipher.final('utf8');
 	return body; 
 }
-
